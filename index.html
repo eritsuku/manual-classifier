@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ClickUp Manual Classifier</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#111a33;
+      --card:#121c38;
+      --text:#e8ecff;
+      --muted:#a9b3d6;
+      --line:rgba(255,255,255,.10);
+      --glow:rgba(125,160,255,.20);
+      --accent:#7da0ff;
+      --good:#6ee7b7;
+      --warn:#fbbf24;
+      --bad:#fb7185;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family: var(--font);
+      background:
+        radial-gradient(900px 600px at 20% 10%, rgba(125,160,255,.18), transparent 55%),
+        radial-gradient(700px 500px at 90% 20%, rgba(110,231,183,.10), transparent 55%),
+        radial-gradient(900px 700px at 40% 90%, rgba(251,191,36,.10), transparent 60%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .wrap{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    .topbar{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17,26,51,.88), rgba(17,26,51,.62));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 10px;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+    }
+
+    .title{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      min-width: 240px;
+    }
+    .title h1{
+      font-size: 16px;
+      margin:0;
+      letter-spacing:.2px;
+      font-weight: 680;
+    }
+    .title .sub{
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .pill{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }
+
+    .panel{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(18,28,56,.92), rgba(18,28,56,.72));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panelHead{
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap: 10px;
+    }
+    .panelHead .h{
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing:.2px;
+    }
+    .panelHead .hint{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .panelBody{ padding: 16px; }
+
+    .btns{
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+    button{
+      appearance:none;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight: 650;
+      letter-spacing:.15px;
+      transition: transform .06s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover{ border-color: rgba(125,160,255,.45); background: rgba(125,160,255,.10); }
+    button:active{ transform: translateY(1px); }
+    button.primary{
+      border-color: rgba(125,160,255,.55);
+      background: rgba(125,160,255,.18);
+    }
+    button.primary:hover{ background: rgba(125,160,255,.24); }
+    button.ghost{ background: transparent; }
+    button.danger:hover{
+      border-color: rgba(251,113,133,.55);
+      background: rgba(251,113,133,.12);
+    }
+    button:disabled{ opacity:.45; cursor:not-allowed; }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-bottom: 12px;
+    }
+    .field label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .field input{
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      outline: none;
+    }
+    .field input:focus{
+      border-color: rgba(125,160,255,.55);
+      box-shadow: 0 0 0 4px rgba(125,160,255,.12);
+    }
+
+    select{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      color: white;
+      max-width: 360px;
+    }
+
+    .small{
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .divider{
+      height:1px;
+      background: var(--line);
+      margin: 14px 0;
+    }
+
+    .radialWrap{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 8px 0 2px;
+    }
+    svg{ max-width: 520px; width:100%; height:auto; }
+    .wedge{
+      cursor:pointer;
+      transition: filter .12s ease, opacity .12s ease;
+      opacity: .92;
+    }
+    .wedge:hover{
+      filter: drop-shadow(0 0 16px var(--glow));
+      opacity: 1;
+    }
+    .wedge.selected{
+      filter: drop-shadow(0 0 20px rgba(125,160,255,.35));
+      opacity: 1;
+    }
+    .centerLabel{
+      font-weight: 750;
+      letter-spacing:.2px;
+      fill: var(--text);
+    }
+    .centerSub{
+      fill: var(--muted);
+      font-weight: 600;
+    }
+
+    .tooltip{
+      position: fixed;
+      z-index: 9999;
+      pointer-events:none;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(17,26,51,.95);
+      box-shadow: var(--shadow);
+      max-width: 260px;
+      transform: translate(12px, 12px);
+      opacity: 0;
+      transition: opacity .08s ease;
+    }
+    .tooltip.show{ opacity: 1; }
+    .tooltip .t{ font-size: 12px; color: var(--muted); line-height:1.4; }
+    .tooltip .k{ font-size: 12px; font-weight: 750; margin-bottom: 4px; color: var(--text); }
+
+    .twoCol{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .choiceCard{
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.04);
+      padding: 12px 12px 10px;
+      cursor:pointer;
+      transition: border-color .12s ease, background .12s ease, transform .06s ease;
+    }
+    .choiceCard:hover{
+      border-color: rgba(125,160,255,.45);
+      background: rgba(125,160,255,.08);
+    }
+    .choiceCard:active{ transform: translateY(1px); }
+    .choiceCard.selected{
+      border-color: rgba(110,231,183,.55);
+      background: rgba(110,231,183,.10);
+    }
+    .choiceCard h3{
+      margin:0 0 8px;
+      font-size: 13px;
+      letter-spacing:.2px;
+    }
+    .choiceCard ul{
+      margin:0;
+      padding-left: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .destGrid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .destCard{
+      display:flex;
+      gap: 12px;
+      justify-content:space-between;
+      align-items:center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.04);
+      padding: 12px;
+    }
+    .destCard .left{
+      display:flex;
+      flex-direction:column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .destCard .name{
+      font-weight: 750;
+      font-size: 13px;
+      letter-spacing:.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .destCard .desc{
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .statusLine{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.14);
+      font-size: 12px;
+      color: var(--muted);
+      line-height:1.45;
+    }
+
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+      .topbar{ position: relative; top:auto; }
+      .twoCol{ grid-template-columns: 1fr; }
+      select{ max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>Manual Classifier</h1>
+        <div class="sub">Radial postures → Distinction Mode → Folder/List destination</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <span class="pill" id="taskPill">Task: <span id="taskIdText">—</span></span>
+        <span class="pill">Mode: <span id="modeText">Postures</span></span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel" id="mainPanel">
+        <div class="panelHead">
+          <div>
+            <div class="h" id="panelTitle">Select postures (multi-select)</div>
+            <div class="hint" id="panelHint">Hover a wedge for a quick definition. Click wedges to select. Then Next.</div>
+          </div>
+          <div class="btns">
+            <button class="ghost danger" id="resetBtn">Reset</button>
+            <button class="primary" id="nextBtn" disabled>Next</button>
+          </div>
+        </div>
+        <div class="panelBody" id="panelBody"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead">
+          <div class="h">ClickUp Connection</div>
+          <div class="hint">Token is stored only in this browser.</div>
+        </div>
+        <div class="panelBody">
+          <div class="field">
+            <label>ClickUp Personal API Token</label>
+            <input id="tokenInput" type="password" placeholder="Paste token (saved locally in this browser)" />
+          </div>
+
+          <div class="field">
+            <label>Task URL (optional fallback if not included in your link)</label>
+            <input id="taskUrlInput" type="text" placeholder="Paste ClickUp task URL (app.clickup.com/...)" />
+          </div>
+
+          <div class="btns" style="justify-content:flex-start;margin-top:10px;">
+            <button id="syncBtn" class="primary">Sync folders & lists</button>
+          </div>
+          <div class="small" id="syncMeta" style="margin-top:8px;">Not synced yet.</div>
+
+          <div class="divider"></div>
+
+          <div class="small">
+            <div><b>Tip:</b> Once you sync, the destination screen shows every folder and every list, up-to-date.</div>
+            <div style="margin-top:8px;"><b>Security:</b> Don’t share this Netlify link widely; it can move tasks using your token.</div>
+          </div>
+
+          <div class="statusLine" id="statusLine">Status: idle.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip">
+    <div class="k" id="ttTitle"></div>
+    <div class="t" id="ttBody"></div>
+  </div>
+
+<script>
+  // ====== CONFIG (edit wording if you want, but nothing else required) ======
+  const CONFIG = {
+    tooltips: {
+      governance: "Rules of the game: standards, constraints, approvals, institutional policy logic.",
+      oversight: "Monitoring/routing/compliance tracking without owning execution deliverables.",
+      execution: "You own outcomes and deliver the work product, not just guidance.",
+      advisory: "You shape someone else’s work; influence without owning the deliverable.",
+      infrastructure: "Systems, templates, automations, architecture that enable others’ work.",
+      product: "Reusable artifact meant for broad reuse (job aid, playbook, toolkit)."
+    },
+
+    // Recommendation maps to a FOLDER NAME (as it appears in ClickUp).
+    // You can edit these names later to match your exact Folder names.
+    recommendedFolderByPosture: {
+      governance: "Cadet Data Collection Governance",
+      oversight: "Cadet Data Collection Governance",
+      execution: "Program Evaluation",
+      advisory: "Program Evaluation",
+      infrastructure: "Software & Apps",
+      product: "Tools & Analytical Products"
+    },
+
+    // When showing lists inside a folder, we try to default-select a list with these name hints.
+    defaultListNameHints: ["misc", "intake", "inbox", "triage"]
+  };
+
+  // ====== State ======
+  const state = {
+    step: "postures",              // postures | distinction | destination
+    selected: new Set(),           // posture keys
+    resolvedDominant: null,        // posture key
+    taskId: null,                  // ClickUp task id
+    structure: null,               // { teamId, spaces, folderNameToLists: Map(folderName -> lists[]) }
+    lastSynced: null
+  };
+
+  // Postures (radial wedges)
+  const POSTURES = [
+    { key:"governance", label:"Governance Authority" },
+    { key:"oversight", label:"Oversight / Monitoring" },
+    { key:"execution", label:"Execution Ownership" },
+    { key:"advisory", label:"Advisory Support" },
+    { key:"infrastructure", label:"Infrastructure / Tooling" },
+    { key:"product", label:"Reusable Product" }
+  ];
+
+  // Distinction statements (3 per column, as requested)
+  const DISTINCTION = {
+    governance_vs_advisory: {
+      leftKey: "governance",
+      rightKey: "advisory",
+      leftTitle: "Governance Authority",
+      rightTitle: "Advisory Support",
+      left: [
+        "This changes rules/standards others must follow.",
+        "I’m defining constraints, approvals, or institutional conditions.",
+        "Without my governance role, this task largely disappears."
+      ],
+      right: [
+        "I’m shaping someone else’s execution, not setting rules.",
+        "I don’t own compliance authority—only guidance/influence.",
+        "This task exists even if governance roles were removed."
+      ]
+    },
+    tools_vs_infra: {
+      leftKey: "product",
+      rightKey: "infrastructure",
+      leftTitle: "Reusable Product",
+      rightTitle: "Infrastructure / Tooling",
+      left: [
+        "Primary output is a reusable artifact for others.",
+        "Success = adoption/utility of the artifact itself.",
+        "This is portable across projects/events."
+      ],
+      right: [
+        "Primary output is a system/automation that enables work.",
+        "Success = reliability, repeatability, reduced friction.",
+        "This lives ‘under the hood’ more than as a handout."
+      ]
+    },
+    execution_vs_advisory: {
+      leftKey: "execution",
+      rightKey: "advisory",
+      leftTitle: "Execution Ownership",
+      rightTitle: "Advisory Support",
+      left: [
+        "I’m accountable for the deliverable/outcome.",
+        "This task ends with something I deliver, not just recommend.",
+        "My role isn’t optional once committed."
+      ],
+      right: [
+        "Someone else owns execution; I’m supporting them.",
+        "My output is guidance, review, alignment, or shaping.",
+        "My involvement can end without blocking delivery."
+      ]
+    },
+    oversight_vs_governance: {
+      leftKey: "oversight",
+      rightKey: "governance",
+      leftTitle: "Oversight / Monitoring",
+      rightTitle: "Governance Authority",
+      left: [
+        "I’m tracking/routing/monitoring compliance and status.",
+        "I’m not rewriting standards—just ensuring the machine runs.",
+        "This is enforcement/visibility more than rule-making."
+      ],
+      right: [
+        "I’m defining or changing the standards themselves.",
+        "I’m setting constraints/conditions for others’ actions.",
+        "This is authority design, not authority operation."
+      ]
+    }
+  };
+
+  // ====== DOM helpers ======
+  function qs(id){ return document.getElementById(id); }
+  function setStatus(msg){ qs("statusLine").textContent = "Status: " + msg; }
+
+  function saveLocal(){
+    localStorage.setItem("cu_token", qs("tokenInput").value.trim());
+  }
+  function loadLocal(){
+    const t = localStorage.getItem("cu_token") || "";
+    qs("tokenInput").value = t;
+  }
+
+  function parseTaskIdFromUrl(url){
+    if(!url) return null;
+    try{
+      const u = new URL(url);
+      const taskParam = u.searchParams.get("task");
+      if(taskParam) return taskParam;
+
+      const parts = u.pathname.split("/").filter(Boolean);
+      const tIndex = parts.indexOf("t");
+      if(tIndex >= 0 && parts[tIndex+1]) return parts[tIndex+1];
+
+      const last = parts[parts.length-1];
+      if(last && last.length >= 5) return last;
+    }catch(e){
+      if(url.trim().length >= 5) return url.trim();
+    }
+    return null;
+  }
+
+  function getTaskId(){
+    const params = new URLSearchParams(window.location.search);
+    const qTask = params.get("task");
+    if(qTask) return qTask;
+
+    const taskUrl = params.get("taskUrl");
+    if(taskUrl) return parseTaskIdFromUrl(taskUrl);
+
+    const pasted = qs("taskUrlInput").value.trim();
+    return parseTaskIdFromUrl(pasted);
+  }
+
+  function updateTopPills(){
+    qs("taskIdText").textContent = state.taskId ? state.taskId : "—";
+    qs("modeText").textContent =
+      state.step === "postures" ? "Postures" :
+      state.step === "distinction" ? "Distinction Mode" : "Destination";
+  }
+
+  // ====== Tooltip ======
+  const tooltip = qs("tooltip");
+  function showTooltip(title, body, x, y){
+    qs("ttTitle").textContent = title;
+    qs("ttBody").textContent = body;
+    tooltip.style.left = x + "px";
+    tooltip.style.top = y + "px";
+    tooltip.classList.add("show");
+  }
+  function hideTooltip(){ tooltip.classList.remove("show"); }
+
+  // ====== ClickUp API helpers (v2 for reading structure; v3 for moving task) ======
+  async function cuFetch(url, token){
+    const res = await fetch(url, { headers: { "Authorization": token } });
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(`ClickUp API ${res.status}: ${txt.slice(0,200)}`);
+    }
+    return res.json();
+  }
+
+  async function syncClickUpStructure(){
+    const token = qs("tokenInput").value.trim();
+    if(!token){
+      setStatus("Paste your ClickUp token first.");
+      return;
+    }
+
+    setStatus("Syncing… fetching workspaces …");
+
+    // v2: list workspaces (teams)
+    const teams = await cuFetch("https://api.clickup.com/api/v2/team", token);
+    if(!teams.teams || teams.teams.length === 0){
+      throw new Error("No workspaces returned.");
+    }
+
+    // You said everything is in one workspace; take first by default.
+    const team = teams.teams[0];
+    const teamId = team.id;
+
+    setStatus(`Syncing… fetching spaces in workspace ${teamId} …`);
+    const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
+    const spaceList = (spaces.spaces || []).map(s => ({ id: s.id, name: s.name }));
+
+    const folderNameToLists = new Map();
+
+    for(const sp of spaceList){
+      setStatus(`Syncing… folders in space: ${sp.name} …`);
+      const folders = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/folder?archived=false`, token);
+      const fList = (folders.folders || []).map(f => ({ id: f.id, name: f.name }));
+
+      // For each folder, fetch lists
+      for(const f of fList){
+        setStatus(`Syncing… lists: ${sp.name} > ${f.name} …`);
+        const lists = await cuFetch(`https://api.clickup.com/api/v2/folder/${f.id}/list?archived=false`, token);
+        const lList = (lists.lists || []).map(l => ({
+          id: l.id, name: l.name, folderName: f.name, spaceName: sp.name
+        }));
+        folderNameToLists.set(f.name, lList);
+      }
+
+      // Folderless lists in the space
+      setStatus(`Syncing… folderless lists in space: ${sp.name} …`);
+      const folderless = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/list?archived=false`, token);
+      const fl = (folderless.lists || []).map(l => ({
+        id: l.id, name: l.name, folderName: null, spaceName: sp.name
+      }));
+      if(fl.length){
+        const pseudo = "Folderless Lists";
+        const existing = folderNameToLists.get(pseudo) || [];
+        folderNameToLists.set(pseudo, existing.concat(fl));
+      }
+    }
+
+    state.structure = { teamId, spaces: spaceList, folderNameToLists };
+    state.lastSynced = new Date();
+    qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Folders: ${folderNameToLists.size}`;
+    setStatus("Sync complete.");
+    render();
+  }
+
+  async function moveTaskToList(listId, label){
+    const token = qs("tokenInput").value.trim();
+    const taskId = getTaskId();
+
+    if(!taskId){
+      setStatus("Missing task ID. Paste task URL on the right, then try again.");
+      return;
+    }
+    state.taskId = taskId;
+    updateTopPills();
+
+    if(!token){
+      setStatus("Missing token.");
+      return;
+    }
+    if(!listId){
+      setStatus("No destination list selected.");
+      return;
+    }
+    if(!state.structure || !state.structure.teamId){
+      setStatus("Sync first so we know your workspace id.");
+      return;
+    }
+
+    const workspaceId = state.structure.teamId;
+
+    setStatus(`Moving task to: ${label} …`);
+
+    // v3 move endpoint
+    const url = `https://api.clickup.com/api/v3/workspaces/${encodeURIComponent(workspaceId)}/tasks/${encodeURIComponent(taskId)}/home_list/${encodeURIComponent(listId)}`;
+
+    try{
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ move_custom_fields: true })
+      });
+
+      if(!res.ok){
+        const txt = await res.text();
+        setStatus(`Move failed (${res.status}). Open task & move manually. Details: ${txt.slice(0,160)}…`);
+        window.open(`https://app.clickup.com/t/${encodeURIComponent(taskId)}`, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      setStatus("Moved successfully. You can close this tab.");
+    }catch(err){
+      setStatus("Network/API error. Open task & move manually.");
+      window.open(`https://app.clickup.com/t/${encodeURIComponent(taskId)}`, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  // ====== UI logic ======
+  function render(){
+    updateTopPills();
+
+    const panelBody = qs("panelBody");
+    panelBody.innerHTML = "";
+
+    if(state.step === "postures"){
+      qs("panelTitle").textContent = "Select postures (multi-select)";
+      qs("panelHint").textContent = "Hover a wedge for a quick definition. Click wedges to select. Then Next.";
+      qs("nextBtn").disabled = state.selected.size === 0;
+      panelBody.appendChild(renderRadial());
+
+    } else if(state.step === "distinction"){
+      qs("panelTitle").textContent = "Resolve dominant posture";
+      qs("panelHint").textContent = "Pick the column that best describes this task. Then Next.";
+      qs("nextBtn").disabled = !state.resolvedDominant;
+      panelBody.appendChild(renderDistinction());
+
+    } else if(state.step === "destination"){
+      qs("panelTitle").textContent = "Choose destination Folder + List";
+      qs("panelHint").textContent = "Recommended folder first; list is overrideable. Click OK to move.";
+      qs("nextBtn").disabled = true;
+      panelBody.appendChild(renderDestinations());
+    }
+  }
+
+  function renderRadial(){
+    const wrap = document.createElement("div");
+    wrap.className = "radialWrap";
+
+    const size = 520;
+    const cx = size/2, cy = size/2;
+    const rOuter = 240;
+    const rInner = 120;
+
+    function polarToXY(angleDeg, r){
+      const a = (angleDeg - 90) * Math.PI/180;
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    }
+    function wedgePath(a0, a1){
+      const p0 = polarToXY(a0, rOuter);
+      const p1 = polarToXY(a1, rOuter);
+      const q0 = polarToXY(a1, rInner);
+      const q1 = polarToXY(a0, rInner);
+      const large = (a1 - a0) > 180 ? 1 : 0;
+      return [
+        `M ${p0.x} ${p0.y}`,
+        `A ${rOuter} ${rOuter} 0 ${large} 1 ${p1.x} ${p1.y}`,
+        `L ${q0.x} ${q0.y}`,
+        `A ${rInner} ${rInner} 0 ${large} 0 ${q1.x} ${q1.y}`,
+        "Z"
+      ].join(" ");
+    }
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+
+    const ring = document.createElementNS(svgNS, "circle");
+    ring.setAttribute("cx", cx);
+    ring.setAttribute("cy", cy);
+    ring.setAttribute("r", rOuter+8);
+    ring.setAttribute("fill", "rgba(255,255,255,0.03)");
+    ring.setAttribute("stroke", "rgba(255,255,255,0.10)");
+    ring.setAttribute("stroke-width", "2");
+    svg.appendChild(ring);
+
+    const n = POSTURES.length;
+    const startAngle = 0;
+    const slice = 360 / n;
+
+    POSTURES.forEach((p, i) => {
+      const a0 = startAngle + i*slice + 2;
+      const a1 = startAngle + (i+1)*slice - 2;
+
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", wedgePath(a0, a1));
+      path.setAttribute("fill", "rgba(255,255,255,0.06)");
+      path.setAttribute("stroke", "rgba(255,255,255,0.12)");
+      path.setAttribute("stroke-width", "1.2");
+      path.classList.add("wedge");
+      if(state.selected.has(p.key)) path.classList.add("selected");
+
+      const mid = (a0+a1)/2;
+      const labelPos = polarToXY(mid, (rOuter+rInner)/2);
+      const text = document.createElementNS(svgNS, "text");
+      text.setAttribute("x", labelPos.x);
+      text.setAttribute("y", labelPos.y);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "middle");
+      text.setAttribute("fill", "rgba(232,236,255,0.92)");
+      text.setAttribute("font-size", "12");
+      text.setAttribute("font-weight", "700");
+      text.textContent = p.label.split(" ")[0];
+
+      path.addEventListener("mouseenter", (e) => showTooltip(p.label, CONFIG.tooltips[p.key], e.clientX, e.clientY));
+      path.addEventListener("mousemove", (e) => showTooltip(p.label, CONFIG.tooltips[p.key], e.clientX, e.clientY));
+      path.addEventListener("mouseleave", () => hideTooltip());
+      path.addEventListener("click", () => {
+        if(state.selected.has(p.key)) state.selected.delete(p.key);
+        else state.selected.add(p.key);
+        state.resolvedDominant = null;
+        qs("nextBtn").disabled = state.selected.size === 0;
+        render();
+      });
+
+      svg.appendChild(path);
+      svg.appendChild(text);
+    });
+
+    const center = document.createElementNS(svgNS, "circle");
+    center.setAttribute("cx", cx);
+    center.setAttribute("cy", cy);
+    center.setAttribute("r", rInner-12);
+    center.setAttribute("fill", "rgba(0,0,0,0.20)");
+    center.setAttribute("stroke", "rgba(255,255,255,0.12)");
+    center.setAttribute("stroke-width", "1.2");
+    svg.appendChild(center);
+
+    const cText = document.createElementNS(svgNS, "text");
+    cText.setAttribute("x", cx);
+    cText.setAttribute("y", cy-8);
+    cText.setAttribute("text-anchor", "middle");
+    cText.setAttribute("class", "centerLabel");
+    cText.setAttribute("font-size", "16");
+    cText.textContent = "This task…";
+    svg.appendChild(cText);
+
+    const cSub = document.createElementNS(svgNS, "text");
+    cSub.setAttribute("x", cx);
+    cSub.setAttribute("y", cy+14);
+    cSub.setAttribute("text-anchor", "middle");
+    cSub.setAttribute("class", "centerSub");
+    cSub.setAttribute("font-size", "12");
+    cSub.textContent = state.selected.size ? `${state.selected.size} posture(s) selected` : "select one or more postures";
+    svg.appendChild(cSub);
+
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  function chooseDistinctionPair(keys){
+    const s = new Set(keys);
+
+    if(s.has("governance") && s.has("advisory")) return DISTINCTION.governance_vs_advisory;
+    if(s.has("product") && s.has("infrastructure")) return DISTINCTION.tools_vs_infra;
+    if(s.has("execution") && s.has("advisory")) return DISTINCTION.execution_vs_advisory;
+    if(s.has("oversight") && s.has("governance")) return DISTINCTION.oversight_vs_governance;
+
+    const arr = [...s];
+    const leftKey = arr[0], rightKey = arr[1];
+    return {
+      leftKey, rightKey,
+      leftTitle: POSTURES.find(p=>p.key===leftKey)?.label || leftKey,
+      rightTitle: POSTURES.find(p=>p.key===rightKey)?.label || rightKey,
+      left: ["Feels more like this posture.", "Better matches the task’s core intent.", "Dominates the decision."],
+      right: ["Feels more like this posture.", "Better matches the task’s core intent.", "Dominates the decision."]
+    };
+  }
+
+  function renderDistinction(){
+    const wrap = document.createElement("div");
+
+    const selectedKeys = [...state.selected];
+    const pair = chooseDistinctionPair(selectedKeys);
+    state._pair = pair;
+
+    const info = document.createElement("div");
+    info.className = "small";
+    info.textContent = "Click the column that best describes the task. This sets the dominant posture.";
+    wrap.appendChild(info);
+
+    const grid = document.createElement("div");
+    grid.className = "twoCol";
+
+    const left = document.createElement("div");
+    left.className = "choiceCard" + (state.resolvedDominant === pair.leftKey ? " selected" : "");
+    left.innerHTML = `<h3>${pair.leftTitle}</h3><ul>${pair.left.map(x=>`<li>${x}</li>`).join("")}</ul>`;
+    left.addEventListener("click", () => { state.resolvedDominant = pair.leftKey; render(); });
+
+    const right = document.createElement("div");
+    right.className = "choiceCard" + (state.resolvedDominant === pair.rightKey ? " selected" : "");
+    right.innerHTML = `<h3>${pair.rightTitle}</h3><ul>${pair.right.map(x=>`<li>${x}</li>`).join("")}</ul>`;
+    right.addEventListener("click", () => { state.resolvedDominant = pair.rightKey; render(); });
+
+    grid.appendChild(left);
+    grid.appendChild(right);
+    wrap.appendChild(grid);
+
+    return wrap;
+  }
+
+  function pickDefaultList(lists){
+    if(!lists || lists.length === 0) return null;
+    const hints = CONFIG.defaultListNameHints;
+    const lower = (s)=>String(s||"").toLowerCase();
+    for(const h of hints){
+      const found = lists.find(l => lower(l.name).includes(h));
+      if(found) return found;
+    }
+    return lists[0];
+  }
+
+  function renderDestinations(){
+    const wrap = document.createElement("div");
+
+    if(!state.structure){
+      const msg = document.createElement("div");
+      msg.className = "statusLine";
+      msg.textContent = "Click “Sync folders & lists” on the right to load your current ClickUp structure.";
+      wrap.appendChild(msg);
+      return wrap;
+    }
+
+    const dominant = state.resolvedDominant || [...state.selected][0];
+    const recommendedFolderName = CONFIG.recommendedFolderByPosture[dominant] || "Program Evaluation";
+
+    const map = state.structure.folderNameToLists;
+
+    // All folders, recommended first
+    const folderNames = [...map.keys()].sort((a,b)=>a.localeCompare(b));
+    folderNames.sort((a,b)=> (a === recommendedFolderName ? -1 : b === recommendedFolderName ? 1 : 0));
+
+    const top = document.createElement("div");
+    top.className = "small";
+    top.innerHTML = `<b>Dominant posture:</b> ${POSTURES.find(p=>p.key===dominant)?.label || dominant}
+                     <span style="margin-left:10px;"><b>Recommended folder:</b> ${recommendedFolderName}</span>`;
+    wrap.appendChild(top);
+
+    const grid = document.createElement("div");
+    grid.className = "destGrid";
+
+    for(const folderName of folderNames){
+      const lists = map.get(folderName) || [];
+      const isRec = folderName === recommendedFolderName;
+
+      const defaultList = pickDefaultList(lists);
+
+      const card = document.createElement("div");
+      card.className = "destCard";
+
+      const left = document.createElement("div");
+      left.className = "left";
+      left.innerHTML = `
+        <div class="name">${isRec ? "✅ Recommended: " : ""}${folderName}</div>
+        <div class="desc">${lists.length} list(s) available</div>
+      `;
+
+      const right = document.createElement("div");
+      right.className = "btns";
+      right.style.justifyContent = "flex-end";
+
+      const select = document.createElement("select");
+
+      for(const l of lists){
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.name;
+        if(defaultList && String(l.id) === String(defaultList.id)) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      const ok = document.createElement("button");
+      ok.className = isRec ? "primary" : "";
+      ok.textContent = "OK";
+
+      ok.addEventListener("click", async () => {
+        saveLocal();
+        const listId = select.value;
+        const listName = lists.find(x => String(x.id) === String(listId))?.name || "Selected List";
+        await moveTaskToList(listId, `${folderName} > ${listName}`);
+      });
+
+      right.appendChild(select);
+      right.appendChild(ok);
+
+      card.appendChild(left);
+      card.appendChild(right);
+      grid.appendChild(card);
+    }
+
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  // ====== Navigation ======
+  function goNext(){
+    if(state.step === "postures"){
+      if(state.selected.size === 1){
+        state.resolvedDominant = [...state.selected][0];
+        state.step = "destination";
+      } else {
+        state.step = "distinction";
+        state.resolvedDominant = null;
+      }
+    } else if(state.step === "distinction"){
+      const dom = state.resolvedDominant;
+      if(!dom) return;
+
+      const others = [...state.selected].filter(k => k !== dom);
+      if(others.length >= 2){
+        // Tournament: reduce to dom vs one remaining
+        state.selected = new Set([dom, others[0]]);
+        state.resolvedDominant = null;
+        state.step = "distinction";
+      } else {
+        state.selected = new Set([dom]);
+        state.step = "destination";
+      }
+    }
+    render();
+  }
+
+  function resetAll(){
+    state.step = "postures";
+    state.selected = new Set();
+    state.resolvedDominant = null;
+    qs("nextBtn").disabled = true;
+    render();
+  }
+
+  // ====== Init ======
+  (function init(){
+    loadLocal();
+
+    state.taskId = getTaskId();
+    updateTopPills();
+
+    qs("nextBtn").addEventListener("click", goNext);
+    qs("resetBtn").addEventListener("click", resetAll);
+
+    qs("tokenInput").addEventListener("input", saveLocal);
+    qs("taskUrlInput").addEventListener("input", () => {
+      state.taskId = getTaskId();
+      updateTopPills();
+    });
+
+    qs("syncBtn").addEventListener("click", async () => {
+      try{
+        await syncClickUpStructure();
+      }catch(e){
+        setStatus(`Sync failed: ${e.message}`);
+      }
+    });
+
+    render();
+  })();
+</script>
+</body>
+</html>
