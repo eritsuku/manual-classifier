@@ -211,7 +211,6 @@
       filter: drop-shadow(0 0 16px var(--glow));
       opacity: 1;
     }
-    /* BIGGER, OBVIOUS selection state */
     .wedge.selected{
       opacity: 1;
       filter: drop-shadow(0 0 22px rgba(125,160,255,.45));
@@ -301,7 +300,7 @@
       background: rgba(255,255,255,.04);
       padding: 12px;
       min-width: 0;
-      flex-wrap: wrap; /* prevents cut-off */
+      flex-wrap: wrap;
     }
     .destCard .left{
       display:flex;
@@ -449,7 +448,10 @@
       product: "Tools & Analytical Products"
     },
 
-    defaultListNameHints: ["misc", "intake", "inbox", "triage"]
+    defaultListNameHints: ["misc", "intake", "inbox", "triage"],
+
+    // If a token is already saved locally, auto-sync on page load.
+    autoSyncOnLoad: true
   };
 
   // ====== State ======
@@ -462,7 +464,8 @@
     teamId: null,
     structure: null,
     lastSynced: null,
-    showAllFolders: false
+    showAllFolders: false,
+    syncInProgress: false
   };
 
   const POSTURES = [
@@ -474,7 +477,7 @@
     { key:"product", label:"Reusable" }
   ];
 
-  // Explicit distinction pairs (no more generic “feels like” unless you select an odd combo)
+  // Explicit distinction pairs
   const DISTINCTION = {
     infrastructure_vs_advisory: {
       leftKey: "infrastructure",
@@ -585,12 +588,46 @@
   }
 
   // ====== Task ID parsing ======
+  function parseTaskIdFromClickUpUrl(url){
+    // expects a ClickUp task URL, extracts the /t/<id> portion
+    if(!url) return null;
+    const m = String(url).match(/\/t\/([a-zA-Z0-9]+)/);
+    return m ? m[1] : null;
+  }
+
+  function getTaskIdFromLaunchLink(){
+    // supports:
+    //   ?taskUrl=https://app.clickup.com/t/868gk0wu6
+    //   ?task=868gk0wu6
+    // and still allows pasted fallback in the right panel
+
+    const params = new URLSearchParams(window.location.search);
+
+    const rawTaskUrl = params.get("taskUrl");
+    if(rawTaskUrl){
+      const decoded = decodeURIComponent(rawTaskUrl);
+      const id = parseTaskIdFromClickUpUrl(decoded);
+      if(id) return id;
+    }
+
+    const direct = params.get("task") || params.get("taskId") || params.get("id");
+    if(direct) return decodeURIComponent(direct);
+
+    return null;
+  }
+
   function parseTaskIdFromUrl(url){
+    // legacy helper: handles pasted URLs, bare IDs, etc.
     if(!url) return null;
     try{
       const u = new URL(url);
+      // If someone pasted a link that itself has ?task=...
       const pTask = u.searchParams.get("task") || u.searchParams.get("taskId") || u.searchParams.get("id");
       if(pTask) return pTask;
+
+      // Prefer ClickUp-style /t/<id>
+      const byClickUp = parseTaskIdFromClickUpUrl(u.toString());
+      if(byClickUp) return byClickUp;
 
       const parts = u.pathname.split("/").filter(Boolean);
       const tIndex = parts.indexOf("t");
@@ -605,10 +642,11 @@
   }
 
   function getTaskId(){
-    const params = new URLSearchParams(window.location.search);
-    const qTask = params.get("task") || params.get("taskId") || params.get("id");
-    if(qTask) return qTask;
+    // 1) best: from launch link query param
+    const fromLaunch = getTaskIdFromLaunchLink();
+    if(fromLaunch) return fromLaunch;
 
+    // 2) fallback: pasted in the right panel
     const pasted = qs("taskUrlInput").value.trim();
     return parseTaskIdFromUrl(pasted);
   }
@@ -646,11 +684,9 @@
     const list = (teams.teams || []).map(t => ({ id: String(t.id), name: t.name }));
     state.teams = list;
 
-    // Restore last chosen workspace if available; else default to first
     const saved = loadTeamId();
     state.teamId = saved && list.some(x => x.id === saved) ? saved : (list[0]?.id || null);
 
-    // Populate dropdown
     const sel = qs("teamSelect");
     sel.innerHTML = "";
     for(const t of list){
@@ -665,7 +701,6 @@
     sel.onchange = () => {
       state.teamId = sel.value;
       saveTeamId();
-      // Clear old structure since workspace changed
       state.structure = null;
       qs("syncMeta").textContent = "Workspace changed. Please Sync again.";
       setStatus("Workspace selected. Ready to sync.");
@@ -676,58 +711,64 @@
   }
 
   async function syncClickUpStructure(){
+    if(state.syncInProgress) return;
+
     const token = qs("tokenInput").value.trim();
     if(!token){ setStatus("Paste your ClickUp token first."); return; }
 
-    setStatus("Syncing… fetching workspaces …");
-    await loadWorkspaces(token);
+    state.syncInProgress = true;
+    try{
+      setStatus("Syncing… fetching workspaces …");
+      await loadWorkspaces(token);
 
-    if(!state.teamId){
-      setStatus("No workspace available.");
-      return;
-    }
+      if(!state.teamId){
+        setStatus("No workspace available.");
+        return;
+      }
 
-    const teamId = state.teamId;
-    const teamName = state.teams.find(t => t.id === teamId)?.name || teamId;
+      const teamId = state.teamId;
+      const teamName = state.teams.find(t => t.id === teamId)?.name || teamId;
 
-    setStatus(`Syncing… spaces in workspace: ${teamName} …`);
-    const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
-    const spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
+      setStatus(`Syncing… spaces in workspace: ${teamName} …`);
+      const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
+      const spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
 
-    const folderNameToLists = new Map();
+      const folderNameToLists = new Map();
 
-    for(const sp of spaceList){
-      setStatus(`Syncing… folders in space: ${sp.name} …`);
-      const folders = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/folder?archived=false`, token);
-      const fList = (folders.folders || []).map(f => ({ id: String(f.id), name: f.name }));
+      for(const sp of spaceList){
+        setStatus(`Syncing… folders in space: ${sp.name} …`);
+        const folders = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/folder?archived=false`, token);
+        const fList = (folders.folders || []).map(f => ({ id: String(f.id), name: f.name }));
 
-      for(const f of fList){
-        setStatus(`Syncing… lists: ${sp.name} > ${f.name} …`);
-        const lists = await cuFetch(`https://api.clickup.com/api/v2/folder/${f.id}/list?archived=false`, token);
-        const lList = (lists.lists || []).map(l => ({
-          id: String(l.id), name: l.name, folderName: f.name, spaceName: sp.name
+        for(const f of fList){
+          setStatus(`Syncing… lists: ${sp.name} > ${f.name} …`);
+          const lists = await cuFetch(`https://api.clickup.com/api/v2/folder/${f.id}/list?archived=false`, token);
+          const lList = (lists.lists || []).map(l => ({
+            id: String(l.id), name: l.name, folderName: f.name, spaceName: sp.name
+          }));
+          folderNameToLists.set(f.name, lList);
+        }
+
+        setStatus(`Syncing… folderless lists in space: ${sp.name} …`);
+        const folderless = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/list?archived=false`, token);
+        const fl = (folderless.lists || []).map(l => ({
+          id: String(l.id), name: l.name, folderName: null, spaceName: sp.name
         }));
-        folderNameToLists.set(f.name, lList);
+        if(fl.length){
+          const pseudo = "Folderless Lists";
+          const existing = folderNameToLists.get(pseudo) || [];
+          folderNameToLists.set(pseudo, existing.concat(fl));
+        }
       }
 
-      // Folderless lists
-      setStatus(`Syncing… folderless lists in space: ${sp.name} …`);
-      const folderless = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/list?archived=false`, token);
-      const fl = (folderless.lists || []).map(l => ({
-        id: String(l.id), name: l.name, folderName: null, spaceName: sp.name
-      }));
-      if(fl.length){
-        const pseudo = "Folderless Lists";
-        const existing = folderNameToLists.get(pseudo) || [];
-        folderNameToLists.set(pseudo, existing.concat(fl));
-      }
+      state.structure = { teamId, teamName, spaces: spaceList, folderNameToLists };
+      state.lastSynced = new Date();
+      qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Folders: ${folderNameToLists.size}`;
+      setStatus("Sync complete.");
+      render();
+    } finally {
+      state.syncInProgress = false;
     }
-
-    state.structure = { teamId, teamName, spaces: spaceList, folderNameToLists };
-    state.lastSynced = new Date();
-    qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Folders: ${folderNameToLists.size}`;
-    setStatus("Sync complete.");
-    render();
   }
 
   async function moveTaskToList(listId, label){
@@ -735,7 +776,7 @@
     const taskId = getTaskId();
 
     if(!taskId){
-      setStatus("Missing task ID. Fix: use a ClickUp comment link like ?task={{Task ID}}");
+      setStatus("Missing task ID. Launch this page with: ?taskUrl=https://app.clickup.com/t/<TASK_ID> (or paste Task URL on the right).");
       return;
     }
 
@@ -879,7 +920,6 @@
       path.addEventListener("mousemove", (e) => showTooltip(p.label, CONFIG.tooltips[p.key], e.clientX, e.clientY));
       path.addEventListener("mouseleave", () => hideTooltip());
 
-      // Toggle behavior: click selects; click again deselects (your request)
       path.addEventListener("click", () => {
         if(state.selected.has(p.key)) state.selected.delete(p.key);
         else state.selected.add(p.key);
@@ -925,14 +965,12 @@
 
   function chooseDistinctionPair(keys){
     const s = new Set(keys);
-    // explicit mapping
     if(s.has("infrastructure") && s.has("advisory")) return DISTINCTION.infrastructure_vs_advisory;
     if(s.has("governance") && s.has("oversight")) return DISTINCTION.governance_vs_oversight;
     if(s.has("execution") && s.has("advisory")) return DISTINCTION.execution_vs_advisory;
     if(s.has("product") && s.has("infrastructure")) return DISTINCTION.product_vs_infrastructure;
     if(s.has("governance") && s.has("advisory")) return DISTINCTION.governance_vs_advisory;
 
-    // fallback (rare)
     const arr = [...s];
     const leftKey = arr[0], rightKey = arr[1];
     return {
@@ -985,7 +1023,6 @@
     return lists[0];
   }
 
-  // Destination shows ONLY the relevant folder (with optional “show all”)
   function renderDestinationSingleFolder(){
     const wrap = document.createElement("div");
 
@@ -1095,7 +1132,6 @@
 
       const others = [...state.selected].filter(k => k !== dom);
       if(others.length >= 2){
-        // tournament: reduce to dom vs one remaining
         state.selected = new Set([dom, others[0]]);
         state.resolvedDominant = null;
         state.step = "distinction";
@@ -1118,21 +1154,17 @@
 
   // ====== Init ======
   (function init(){
-    // Host hint (Netlify -> GitHub)
     qs("hostHint").innerHTML =
       `<b>Security note:</b> Don’t share this link widely; it can move tasks using your token.<br>
        <span class="small">Host: ${location.hostname}</span>`;
 
     loadToken();
 
-    // Keep task id live
     state.taskId = getTaskId();
     updateTopPills();
 
-    // Save token continuously
     qs("tokenInput").addEventListener("input", () => {
       saveToken();
-      // enable workspace dropdown once token exists
       qs("teamSelect").disabled = !qs("tokenInput").value.trim();
     });
 
@@ -1152,10 +1184,17 @@
       }
     });
 
-    // If token already present, enable workspace dropdown
     qs("teamSelect").disabled = !qs("tokenInput").value.trim();
 
     render();
+
+    // Auto-sync on load (only if token exists and structure not loaded)
+    if(CONFIG.autoSyncOnLoad && qs("tokenInput").value.trim() && !state.structure){
+      // tiny delay so UI paints first
+      setTimeout(() => {
+        syncClickUpStructure().catch(e => setStatus(`Auto-sync failed: ${e.message}`));
+      }, 150);
+    }
   })();
 </script>
 </body>
