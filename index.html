@@ -306,8 +306,8 @@
       display:flex;
       flex-direction:column;
       gap: 4px;
-      min-width: 240px;
-      flex: 1 1 240px;
+      min-width: 260px;
+      flex: 1 1 260px;
     }
     .destCard .name{
       font-weight: 750;
@@ -316,6 +316,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 100%;
     }
     .destCard .desc{
       font-size: 12px;
@@ -323,15 +324,18 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 100%;
     }
     .destCard .right{
       display:flex;
       gap: 10px;
       align-items:center;
       justify-content:flex-end;
-      flex: 1 1 240px;
-      min-width: 240px;
+      flex: 0 0 auto;
+      min-width: 320px;
     }
+    .destCard .right select{ flex: 1 1 auto; min-width: 180px; }
+    .destCard .right button{ flex: 0 0 auto; }
 
     .statusLine{
       margin-top: 10px;
@@ -349,6 +353,8 @@
       .grid{ grid-template-columns: 1fr; }
       .topbar{ position: relative; top:auto; }
       .twoCol{ grid-template-columns: 1fr; }
+      .destCard .right{ min-width: 0; width: 100%; justify-content:stretch; }
+      .destCard .right select{ min-width: 0; }
     }
   </style>
 </head>
@@ -370,7 +376,7 @@
         <div class="panelHead">
           <div>
             <div class="h" id="panelTitle">Select postures (multi-select)</div>
-            <div class="hint" id="panelHint">Hover a wedge for a quick definition. Click wedges to select. Then Next.</div>
+            <div class="hint" id="panelHint">Hover a wedge for a quick definition. Click wedges to select.</div>
           </div>
           <div class="btns">
             <button class="ghost danger" id="resetBtn">Reset</button>
@@ -446,12 +452,7 @@
       advisory: "Consultation & Advisory",
       infrastructure: "Software & Apps",
       product: "Tools & Analytical Products"
-    },
-
-    defaultListNameHints: ["misc", "intake", "inbox", "triage"],
-
-    // If a token is already saved locally, auto-sync on page load.
-    autoSyncOnLoad: true
+    }
   };
 
   // ====== State ======
@@ -464,8 +465,7 @@
     teamId: null,
     structure: null,
     lastSynced: null,
-    showAllFolders: false,
-    syncInProgress: false
+    showAllFolders: false
   };
 
   const POSTURES = [
@@ -477,7 +477,7 @@
     { key:"product", label:"Reusable" }
   ];
 
-  // Explicit distinction pairs
+  // Distinction pairs (posture definitions only)
   const DISTINCTION = {
     infrastructure_vs_advisory: {
       leftKey: "infrastructure",
@@ -487,11 +487,11 @@
       left: [
         "Primary output is a system/template/automation that enables work.",
         "Success = reliability, repeatability, reduced friction at scale.",
-        "It remains useful even when the current project ends."
+        "It stays useful even when the current project ends."
       ],
       right: [
         "Primary output is guidance, review, shaping, or alignment.",
-        "Success = improved decisions/execution by the owner of the work.",
+        "Success = better execution by the owner of the work.",
         "It’s attached to someone else’s deliverable, not a system."
       ]
     },
@@ -501,13 +501,13 @@
       leftTitle: "Governance Authority",
       rightTitle: "Oversight",
       left: [
-        "Defines or changes standards, constraints, or approval conditions.",
-        "Sets the rules others must follow (authority design).",
+        "Defines or changes standards/constraints/approval conditions.",
+        "Sets the rules others must follow.",
         "Without this, the ‘rules’ would be unclear or inconsistent."
       ],
       right: [
-        "Tracks, routes, monitors, and ensures compliance with existing rules.",
-        "Keeps the machine running (authority operation), not redesigning it.",
+        "Routes, tracks, monitors, and enforces existing rules.",
+        "Keeps the machine running (doesn’t redesign it).",
         "Success = visibility, timeliness, and adherence."
       ]
     },
@@ -519,7 +519,7 @@
       left: [
         "I’m accountable for the deliverable/outcome.",
         "This ends with something I produce or deliver.",
-        "My role is not optional once committed."
+        "My role isn’t optional once committed."
       ],
       right: [
         "Someone else owns the deliverable; I support their outcome.",
@@ -535,12 +535,12 @@
       left: [
         "Primary output is a reusable artifact (job aid, playbook, template).",
         "Success = adoption/utility of the artifact itself.",
-        "It’s ‘consumed’ directly by people."
+        "It’s consumed directly by people."
       ],
       right: [
         "Primary output is a system/automation/workflow that enables work.",
         "Success = reduced friction, fewer manual steps, higher consistency.",
-        "It’s ‘used’ indirectly through the process."
+        "It’s used indirectly through the process."
       ]
     },
     governance_vs_advisory: {
@@ -550,7 +550,7 @@
       rightTitle: "Advisory Support",
       left: [
         "I’m defining constraints/conditions for others’ actions.",
-        "This changes or clarifies institutional standards.",
+        "This clarifies or changes institutional standards.",
         "Compliance authority matters here."
       ],
       right: [
@@ -588,46 +588,12 @@
   }
 
   // ====== Task ID parsing ======
-  function parseTaskIdFromClickUpUrl(url){
-    // expects a ClickUp task URL, extracts the /t/<id> portion
-    if(!url) return null;
-    const m = String(url).match(/\/t\/([a-zA-Z0-9]+)/);
-    return m ? m[1] : null;
-  }
-
-  function getTaskIdFromLaunchLink(){
-    // supports:
-    //   ?taskUrl=https://app.clickup.com/t/868gk0wu6
-    //   ?task=868gk0wu6
-    // and still allows pasted fallback in the right panel
-
-    const params = new URLSearchParams(window.location.search);
-
-    const rawTaskUrl = params.get("taskUrl");
-    if(rawTaskUrl){
-      const decoded = decodeURIComponent(rawTaskUrl);
-      const id = parseTaskIdFromClickUpUrl(decoded);
-      if(id) return id;
-    }
-
-    const direct = params.get("task") || params.get("taskId") || params.get("id");
-    if(direct) return decodeURIComponent(direct);
-
-    return null;
-  }
-
   function parseTaskIdFromUrl(url){
-    // legacy helper: handles pasted URLs, bare IDs, etc.
     if(!url) return null;
     try{
       const u = new URL(url);
-      // If someone pasted a link that itself has ?task=...
       const pTask = u.searchParams.get("task") || u.searchParams.get("taskId") || u.searchParams.get("id");
       if(pTask) return pTask;
-
-      // Prefer ClickUp-style /t/<id>
-      const byClickUp = parseTaskIdFromClickUpUrl(u.toString());
-      if(byClickUp) return byClickUp;
 
       const parts = u.pathname.split("/").filter(Boolean);
       const tIndex = parts.indexOf("t");
@@ -642,11 +608,13 @@
   }
 
   function getTaskId(){
-    // 1) best: from launch link query param
-    const fromLaunch = getTaskIdFromLaunchLink();
-    if(fromLaunch) return fromLaunch;
+    const params = new URLSearchParams(window.location.search);
+    const qTask = params.get("task") || params.get("taskId") || params.get("id");
+    if(qTask) return qTask;
 
-    // 2) fallback: pasted in the right panel
+    const qTaskUrl = params.get("taskUrl");
+    if(qTaskUrl) return parseTaskIdFromUrl(qTaskUrl);
+
     const pasted = qs("taskUrlInput").value.trim();
     return parseTaskIdFromUrl(pasted);
   }
@@ -669,7 +637,7 @@
   }
   function hideTooltip(){ tooltip.classList.remove("show"); }
 
-  // ====== ClickUp API ======
+  // ====== ClickUp API (read-only) ======
   async function cuFetch(url, token){
     const res = await fetch(url, { headers: { "Authorization": token } });
     if(!res.ok){
@@ -711,107 +679,57 @@
   }
 
   async function syncClickUpStructure(){
-    if(state.syncInProgress) return;
-
     const token = qs("tokenInput").value.trim();
     if(!token){ setStatus("Paste your ClickUp token first."); return; }
 
-    state.syncInProgress = true;
-    try{
-      setStatus("Syncing… fetching workspaces …");
-      await loadWorkspaces(token);
+    setStatus("Syncing… fetching workspaces …");
+    await loadWorkspaces(token);
 
-      if(!state.teamId){
-        setStatus("No workspace available.");
-        return;
-      }
-
-      const teamId = state.teamId;
-      const teamName = state.teams.find(t => t.id === teamId)?.name || teamId;
-
-      setStatus(`Syncing… spaces in workspace: ${teamName} …`);
-      const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
-      const spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
-
-      const folderNameToLists = new Map();
-
-      for(const sp of spaceList){
-        setStatus(`Syncing… folders in space: ${sp.name} …`);
-        const folders = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/folder?archived=false`, token);
-        const fList = (folders.folders || []).map(f => ({ id: String(f.id), name: f.name }));
-
-        for(const f of fList){
-          setStatus(`Syncing… lists: ${sp.name} > ${f.name} …`);
-          const lists = await cuFetch(`https://api.clickup.com/api/v2/folder/${f.id}/list?archived=false`, token);
-          const lList = (lists.lists || []).map(l => ({
-            id: String(l.id), name: l.name, folderName: f.name, spaceName: sp.name
-          }));
-          folderNameToLists.set(f.name, lList);
-        }
-
-        setStatus(`Syncing… folderless lists in space: ${sp.name} …`);
-        const folderless = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/list?archived=false`, token);
-        const fl = (folderless.lists || []).map(l => ({
-          id: String(l.id), name: l.name, folderName: null, spaceName: sp.name
-        }));
-        if(fl.length){
-          const pseudo = "Folderless Lists";
-          const existing = folderNameToLists.get(pseudo) || [];
-          folderNameToLists.set(pseudo, existing.concat(fl));
-        }
-      }
-
-      state.structure = { teamId, teamName, spaces: spaceList, folderNameToLists };
-      state.lastSynced = new Date();
-      qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Folders: ${folderNameToLists.size}`;
-      setStatus("Sync complete.");
-      render();
-    } finally {
-      state.syncInProgress = false;
-    }
-  }
-
-  async function moveTaskToList(listId, label){
-    const token = qs("tokenInput").value.trim();
-    const taskId = getTaskId();
-
-    if(!taskId){
-      setStatus("Missing task ID. Launch this page with: ?taskUrl=https://app.clickup.com/t/<TASK_ID> (or paste Task URL on the right).");
+    if(!state.teamId){
+      setStatus("No workspace available.");
       return;
     }
 
-    state.taskId = taskId;
-    updateTopPills();
+    const teamId = state.teamId;
+    const teamName = state.teams.find(t => t.id === teamId)?.name || teamId;
 
-    if(!token){ setStatus("Missing token."); return; }
-    if(!listId){ setStatus("No destination list selected."); return; }
-    if(!state.structure || !state.structure.teamId){ setStatus("Sync first so we know your workspace."); return; }
+    setStatus(`Syncing… spaces in workspace: ${teamName} …`);
+    const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
+    const spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
 
-    const workspaceId = state.structure.teamId;
-    setStatus(`Moving task to: ${label} …`);
+    const folderNameToLists = new Map();
 
-    const url = `https://api.clickup.com/api/v3/workspaces/${encodeURIComponent(workspaceId)}/tasks/${encodeURIComponent(taskId)}/home_list/${encodeURIComponent(listId)}`;
+    for(const sp of spaceList){
+      setStatus(`Syncing… folders in space: ${sp.name} …`);
+      const folders = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/folder?archived=false`, token);
+      const fList = (folders.folders || []).map(f => ({ id: String(f.id), name: f.name }));
 
-    try{
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: {
-          "Authorization": token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ move_custom_fields: true })
-      });
-
-      if(!res.ok){
-        const txt = await res.text();
-        setStatus(`Move failed (${res.status}). Details: ${txt.slice(0,180)}…`);
-        return;
+      for(const f of fList){
+        setStatus(`Syncing… lists: ${sp.name} > ${f.name} …`);
+        const lists = await cuFetch(`https://api.clickup.com/api/v2/folder/${f.id}/list?archived=false`, token);
+        const lList = (lists.lists || []).map(l => ({
+          id: String(l.id), name: l.name, folderName: f.name, spaceName: sp.name
+        }));
+        folderNameToLists.set(f.name, lList);
       }
 
-      setStatus("Moved successfully. You can close this tab.");
-    }catch(err){
-      setStatus("Network/API error while moving task.");
+      setStatus(`Syncing… folderless lists in space: ${sp.name} …`);
+      const folderless = await cuFetch(`https://api.clickup.com/api/v2/space/${sp.id}/list?archived=false`, token);
+      const fl = (folderless.lists || []).map(l => ({
+        id: String(l.id), name: l.name, folderName: null, spaceName: sp.name
+      }));
+      if(fl.length){
+        const pseudo = "Folderless Lists";
+        const existing = folderNameToLists.get(pseudo) || [];
+        folderNameToLists.set(pseudo, existing.concat(fl));
+      }
     }
+
+    state.structure = { teamId, teamName, spaces: spaceList, folderNameToLists };
+    state.lastSynced = new Date();
+    qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Folders: ${folderNameToLists.size}`;
+    setStatus("Sync complete.");
+    render();
   }
 
   // ====== UI render ======
@@ -822,21 +740,22 @@
     const panelBody = qs("panelBody");
     panelBody.innerHTML = "";
 
+    // "Next" is still there, but the flow is automatic now.
     if(state.step === "postures"){
       qs("panelTitle").textContent = "Select postures (multi-select)";
-      qs("panelHint").textContent = "Click wedges to toggle selection. Hover for definitions. Then Next.";
+      qs("panelHint").textContent = "Click wedges to toggle selection. Hover for definitions.";
       qs("nextBtn").disabled = state.selected.size === 0;
       panelBody.appendChild(renderRadial());
 
     } else if(state.step === "distinction"){
       qs("panelTitle").textContent = "Resolve dominant posture";
-      qs("panelHint").textContent = "Pick the column that best describes this task. Then Next.";
-      qs("nextBtn").disabled = !state.resolvedDominant;
+      qs("panelHint").textContent = "Click the column that best describes the task. (Auto-advances.)";
+      qs("nextBtn").disabled = true;
       panelBody.appendChild(renderDistinction());
 
     } else if(state.step === "destination"){
-      qs("panelTitle").textContent = "Choose destination Folder + List";
-      qs("panelHint").textContent = "Shows the relevant folder by default; list is overrideable. Click OK to move.";
+      qs("panelTitle").textContent = "Recommended Folder + Optional List";
+      qs("panelHint").textContent = "Shows the relevant folder by default; list selection is optional.";
       qs("nextBtn").disabled = true;
       panelBody.appendChild(renderDestinationSingleFolder());
     }
@@ -920,11 +839,25 @@
       path.addEventListener("mousemove", (e) => showTooltip(p.label, CONFIG.tooltips[p.key], e.clientX, e.clientY));
       path.addEventListener("mouseleave", () => hideTooltip());
 
+      // Toggle + auto-advance behavior
       path.addEventListener("click", () => {
         if(state.selected.has(p.key)) state.selected.delete(p.key);
         else state.selected.add(p.key);
         state.resolvedDominant = null;
-        qs("nextBtn").disabled = state.selected.size === 0;
+
+        // Auto-advance logic:
+        // - 0 selected: stay on Postures
+        // - 1 selected: jump to Destination immediately
+        // - 2+ selected: jump to Distinction immediately
+        if(state.selected.size === 0){
+          state.step = "postures";
+        } else if(state.selected.size === 1){
+          state.resolvedDominant = [...state.selected][0];
+          state.step = "destination";
+        } else {
+          state.step = "distinction";
+        }
+
         render();
       });
 
@@ -982,6 +915,7 @@
     };
   }
 
+  // Auto-advance from Distinction as soon as you click a column.
   function renderDistinction(){
     const wrap = document.createElement("div");
     const selectedKeys = [...state.selected];
@@ -989,21 +923,30 @@
 
     const info = document.createElement("div");
     info.className = "small";
-    info.textContent = "Pick the column that best describes the task. This sets the dominant posture.";
+    info.textContent = "Click the column that best describes the task. This sets the dominant posture and advances.";
     wrap.appendChild(info);
 
     const grid = document.createElement("div");
     grid.className = "twoCol";
 
+    function resolveAndAdvance(dominantKey){
+      state.resolvedDominant = dominantKey;
+
+      // Reduce multi-select to just the dominant for the recommendation screen.
+      state.selected = new Set([dominantKey]);
+      state.step = "destination";
+      render();
+    }
+
     const left = document.createElement("div");
-    left.className = "choiceCard" + (state.resolvedDominant === pair.leftKey ? " selected" : "");
+    left.className = "choiceCard";
     left.innerHTML = `<h3>${pair.leftTitle}</h3><ul>${pair.left.map(x=>`<li>${x}</li>`).join("")}</ul>`;
-    left.addEventListener("click", () => { state.resolvedDominant = pair.leftKey; render(); });
+    left.addEventListener("click", () => resolveAndAdvance(pair.leftKey));
 
     const right = document.createElement("div");
-    right.className = "choiceCard" + (state.resolvedDominant === pair.rightKey ? " selected" : "");
+    right.className = "choiceCard";
     right.innerHTML = `<h3>${pair.rightTitle}</h3><ul>${pair.right.map(x=>`<li>${x}</li>`).join("")}</ul>`;
-    right.addEventListener("click", () => { state.resolvedDominant = pair.rightKey; render(); });
+    right.addEventListener("click", () => resolveAndAdvance(pair.rightKey));
 
     grid.appendChild(left);
     grid.appendChild(right);
@@ -1012,27 +955,8 @@
     return wrap;
   }
 
-  function pickDefaultList(lists){
-    if(!lists || lists.length === 0) return null;
-    const hints = CONFIG.defaultListNameHints;
-    const lower = (s)=>String(s||"").toLowerCase();
-    for(const h of hints){
-      const found = lists.find(l => lower(l.name).includes(h));
-      if(found) return found;
-    }
-    return lists[0];
-  }
-
   function renderDestinationSingleFolder(){
     const wrap = document.createElement("div");
-
-    if(!state.structure){
-      const msg = document.createElement("div");
-      msg.className = "statusLine";
-      msg.textContent = "Click “Sync folders & lists” on the right to load your current ClickUp structure.";
-      wrap.appendChild(msg);
-      return wrap;
-    }
 
     const dominant = state.resolvedDominant || [...state.selected][0];
     const recommendedFolderName = CONFIG.recommendedFolderByPosture[dominant];
@@ -1042,6 +966,14 @@
     top.innerHTML = `<b>Dominant posture:</b> ${POSTURES.find(p=>p.key===dominant)?.label || dominant}
                      <span style="margin-left:10px;"><b>Recommended folder:</b> ${recommendedFolderName || "(not set)"} </span>`;
     wrap.appendChild(top);
+
+    if(!state.structure){
+      const msg = document.createElement("div");
+      msg.className = "statusLine";
+      msg.textContent = "Optional: click “Sync folders & lists” on the right to load your current ClickUp structure and show the lists for the recommended folder.";
+      wrap.appendChild(msg);
+      return wrap;
+    }
 
     const toggleRow = document.createElement("div");
     toggleRow.style.marginTop = "10px";
@@ -1070,7 +1002,6 @@
 
     for(const folderName of foldersToShow){
       const lists = map.get(folderName) || [];
-      const defaultList = pickDefaultList(lists);
 
       const card = document.createElement("div");
       card.className = "destCard";
@@ -1086,26 +1017,15 @@
       right.className = "right";
 
       const select = document.createElement("select");
-      select.style.flex = "1 1 240px";
       for(const l of lists){
         const opt = document.createElement("option");
         opt.value = l.id;
         opt.textContent = l.name;
-        if(defaultList && String(l.id) === String(defaultList.id)) opt.selected = true;
         select.appendChild(opt);
       }
 
-      const ok = document.createElement("button");
-      ok.className = "primary";
-      ok.textContent = "OK";
-      ok.onclick = async () => {
-        const listId = select.value;
-        const listName = lists.find(x => String(x.id) === String(listId))?.name || "Selected List";
-        await moveTaskToList(listId, `${folderName} > ${listName}`);
-      };
-
+      // No "OK"/Move button in Variant B. This is just an optional override dropdown.
       right.appendChild(select);
-      right.appendChild(ok);
 
       card.appendChild(left);
       card.appendChild(right);
@@ -1114,33 +1034,6 @@
 
     wrap.appendChild(grid);
     return wrap;
-  }
-
-  // ====== Navigation ======
-  function goNext(){
-    if(state.step === "postures"){
-      if(state.selected.size === 1){
-        state.resolvedDominant = [...state.selected][0];
-        state.step = "destination";
-      } else {
-        state.step = "distinction";
-        state.resolvedDominant = null;
-      }
-    } else if(state.step === "distinction"){
-      const dom = state.resolvedDominant;
-      if(!dom) return;
-
-      const others = [...state.selected].filter(k => k !== dom);
-      if(others.length >= 2){
-        state.selected = new Set([dom, others[0]]);
-        state.resolvedDominant = null;
-        state.step = "distinction";
-      } else {
-        state.selected = new Set([dom]);
-        state.step = "destination";
-      }
-    }
-    render();
   }
 
   function resetAll(){
@@ -1155,7 +1048,7 @@
   // ====== Init ======
   (function init(){
     qs("hostHint").innerHTML =
-      `<b>Security note:</b> Don’t share this link widely; it can move tasks using your token.<br>
+      `<b>Security note:</b> Don’t share this link widely; it can read your ClickUp structure using your token.<br>
        <span class="small">Host: ${location.hostname}</span>`;
 
     loadToken();
@@ -1173,8 +1066,20 @@
       updateTopPills();
     });
 
-    qs("nextBtn").addEventListener("click", goNext);
     qs("resetBtn").addEventListener("click", resetAll);
+
+    // Keep Next button as a backup; it simply follows the same rules (rarely needed).
+    qs("nextBtn").addEventListener("click", () => {
+      if(state.step === "postures"){
+        if(state.selected.size === 1){
+          state.resolvedDominant = [...state.selected][0];
+          state.step = "destination";
+        }else if(state.selected.size >= 2){
+          state.step = "distinction";
+        }
+      }
+      render();
+    });
 
     qs("syncBtn").addEventListener("click", async () => {
       try{
@@ -1187,14 +1092,6 @@
     qs("teamSelect").disabled = !qs("tokenInput").value.trim();
 
     render();
-
-    // Auto-sync on load (only if token exists and structure not loaded)
-    if(CONFIG.autoSyncOnLoad && qs("tokenInput").value.trim() && !state.structure){
-      // tiny delay so UI paints first
-      setTimeout(() => {
-        syncClickUpStructure().catch(e => setStatus(`Auto-sync failed: ${e.message}`));
-      }, 150);
-    }
   })();
 </script>
 </body>
