@@ -435,6 +435,9 @@
 <script>
   // ====== CONFIG ======
   const CONFIG = {
+    // Only sync this ClickUp Space (exact name). If not found, the app will fall back to syncing all spaces.
+    targetSpaceName: "USAFA",
+
     tooltips: {
       governance: "Rules/standards: institutional constraints, approvals, and policy logic.",
       oversight: "Monitoring/routing/compliance tracking without owning the deliverable.",
@@ -667,6 +670,7 @@
     sel.disabled = list.length === 0;
 
     sel.onchange = () => {
+      hideTooltip();
       state.teamId = sel.value;
       saveTeamId();
       state.structure = null;
@@ -695,7 +699,18 @@
 
     setStatus(`Syncing… spaces in workspace: ${teamName} …`);
     const spaces = await cuFetch(`https://api.clickup.com/api/v2/team/${teamId}/space?archived=false`, token);
-    const spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
+    let spaceList = (spaces.spaces || []).map(s => ({ id: String(s.id), name: s.name }));
+
+    // Filter to target space name (fix: prevents scanning "Primary" and other spaces)
+    const target = (CONFIG.targetSpaceName || "").trim();
+    if(target){
+      const filtered = spaceList.filter(s => (s.name || "").trim() === target);
+      if(filtered.length){
+        spaceList = filtered;
+      } else {
+        setStatus(`Target space "${target}" not found; syncing all spaces…`);
+      }
+    }
 
     const folderNameToLists = new Map();
 
@@ -727,20 +742,23 @@
 
     state.structure = { teamId, teamName, spaces: spaceList, folderNameToLists };
     state.lastSynced = new Date();
-    qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Folders: ${folderNameToLists.size}`;
+    const spaceNames = spaceList.map(s=>s.name).join(", ") || "—";
+    qs("syncMeta").textContent = `Synced: ${state.lastSynced.toLocaleString()} • Workspace: ${teamName} • Space(s): ${spaceNames} • Folders: ${folderNameToLists.size}`;
     setStatus("Sync complete.");
     render();
   }
 
   // ====== UI render ======
   function render(){
+    // Fix: tooltip should never persist across pages
+    hideTooltip();
+
     state.taskId = getTaskId();
     updateTopPills();
 
     const panelBody = qs("panelBody");
     panelBody.innerHTML = "";
 
-    // "Next" is still there, but the flow is automatic now.
     if(state.step === "postures"){
       qs("panelTitle").textContent = "Select postures (multi-select)";
       qs("panelHint").textContent = "Click wedges to toggle selection. Hover for definitions.";
@@ -839,25 +857,11 @@
       path.addEventListener("mousemove", (e) => showTooltip(p.label, CONFIG.tooltips[p.key], e.clientX, e.clientY));
       path.addEventListener("mouseleave", () => hideTooltip());
 
-      // Toggle + auto-advance behavior
+      // Fix: restore true multi-select (no auto-advance on click)
       path.addEventListener("click", () => {
         if(state.selected.has(p.key)) state.selected.delete(p.key);
         else state.selected.add(p.key);
         state.resolvedDominant = null;
-
-        // Auto-advance logic:
-        // - 0 selected: stay on Postures
-        // - 1 selected: jump to Destination immediately
-        // - 2+ selected: jump to Distinction immediately
-        if(state.selected.size === 0){
-          state.step = "postures";
-        } else if(state.selected.size === 1){
-          state.resolvedDominant = [...state.selected][0];
-          state.step = "destination";
-        } else {
-          state.step = "distinction";
-        }
-
         render();
       });
 
@@ -915,7 +919,6 @@
     };
   }
 
-  // Auto-advance from Distinction as soon as you click a column.
   function renderDistinction(){
     const wrap = document.createElement("div");
     const selectedKeys = [...state.selected];
@@ -930,6 +933,7 @@
     grid.className = "twoCol";
 
     function resolveAndAdvance(dominantKey){
+      hideTooltip();
       state.resolvedDominant = dominantKey;
 
       // Reduce multi-select to just the dominant for the recommendation screen.
@@ -1024,9 +1028,7 @@
         select.appendChild(opt);
       }
 
-      // No "OK"/Move button in Variant B. This is just an optional override dropdown.
       right.appendChild(select);
-
       card.appendChild(left);
       card.appendChild(right);
       grid.appendChild(card);
@@ -1037,6 +1039,7 @@
   }
 
   function resetAll(){
+    hideTooltip();
     state.step = "postures";
     state.selected = new Set();
     state.resolvedDominant = null;
@@ -1068,8 +1071,9 @@
 
     qs("resetBtn").addEventListener("click", resetAll);
 
-    // Keep Next button as a backup; it simply follows the same rules (rarely needed).
+    // Fix: Next controls progression; wedges are true multi-select again
     qs("nextBtn").addEventListener("click", () => {
+      hideTooltip();
       if(state.step === "postures"){
         if(state.selected.size === 1){
           state.resolvedDominant = [...state.selected][0];
